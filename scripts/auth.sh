@@ -50,10 +50,10 @@ else
   trap 'rm -f "${tmpfile}"' EXIT
 
   dialog --backtitle "${DIALOG_BACKTITLE}" \
-         --title 'Login required' \
-         --form 'Please enter your Janus credentials:' 10 50 0 \
-         'Username:'  1 1 '' 1 15 30 0 \
-         'Password:'  2 1 '' 2 15 30 0 2> "${tmpfile}"
+       --title 'Login required' \
+       --mixedform 'Please enter your Janus credentials:' 12 50 0 \
+       'Username:'  1 1 '' 1 15 30 0 0 \
+       'Password:'  2 1 '' 2 15 30 0 1 2> "${tmpfile}"
 
   USER_LOGIN=$(sed -n 1p "${tmpfile}")
   USER_PWD=$(sed -n 2p "${tmpfile}")
