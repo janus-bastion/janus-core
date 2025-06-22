@@ -1,12 +1,10 @@
 name: CI
 
-# Déclenchement du workflow sur chaque push dans la branche main
 on:
   push:
     branches: [ "main" ]
 
 jobs:
-  # Job 1 : Lint ShellCheck des scripts shell
   lint:
     name: Lint Shell scripts (ShellCheck)
     runs-on: ubuntu-latest
@@ -15,54 +13,49 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run ShellCheck on scripts
-        # Exécute ShellCheck sur tous les scripts du dossier scripts/
         run: shellcheck -x scripts/*.sh
 
-  # Job 2 : Build de l'image Docker (dépend du succès du lint)
   build:
     name: Build Docker Image
     runs-on: ubuntu-latest
-    needs: lint  # Attend que le job lint réussisse avant d'exécuter le build
+    needs: lint
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx (optional, for multi-platform builds)
-        # Installe Docker Buildx pour de futures améliorations (multi-arch, cache, etc.)
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
       - name: Build Docker image
-        # Construit l'image Docker avec plusieurs tags :
-        # - "latest" pour représenter la dernière version sur main
-        # - le SHA court du commit pour un tag unique de traçabilité
-        # Si un nom de registre/utilisateur est fourni (secret DOCKER_USERNAME), on ajoute aussi ces tags complets
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
         run: |
-          # Calcul du SHA court du commit (7 premiers caractères)
           SHORT_SHA="${GITHUB_SHA::7}"
-          # Prépare les options de tags additionnels si DOCKER_USERNAME est défini
-          EXTRA_TAGS=""
-          if [ -n "$DOCKER_USERNAME" ]; then
-            EXTRA_TAGS="$EXTRA_TAGS -t $DOCKER_USERNAME/janus-core:latest -t $DOCKER_USERNAME/janus-core:$SHORT_SHA"
-          fi
-          echo "Building Docker image with tags 'latest' and '$SHORT_SHA' $([ -n \"$DOCKER_USERNAME\" ] && echo \"for user '$DOCKER_USERNAME'\")"
-          docker build -t janus-core:latest -t janus-core:$SHORT_SHA $EXTRA_TAGS .
+          echo "Building Docker image with tags 'latest' and '$SHORT_SHA'"
+
+          docker build -t janus-core:latest -t janus-core:$SHORT_SHA .
 
       - name: Docker login (optional)
-        # Se connecte au registre Docker (Docker Hub par défaut) si les secrets sont fournis
-        if: ${{ secrets.DOCKER_USERNAME && secrets.DOCKER_PASSWORD }}
         env:
-          USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-        run: echo "$PASSWORD" | docker login -u "$USERNAME" --password-stdin
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          if [ -n "$DOCKER_USERNAME" ] && [ -n "$DOCKER_PASSWORD" ]; then
+            echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+          else
+            echo "Skipping Docker login (secrets not set)"
+          fi
 
       - name: Push image to registry (optional)
-        # Pousse les images taggées vers le registre distant si authentifié
-        if: ${{ secrets.DOCKER_USERNAME && secrets.DOCKER_PASSWORD }}
         env:
-          USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
         run: |
-          echo "Pushing Docker image to registry as '$USERNAME/janus-core'..."
-          docker push "$USERNAME/janus-core:latest"
-          docker push "$USERNAME/janus-core:${GITHUB_SHA::7}"
+          SHORT_SHA="${GITHUB_SHA::7}"
+          if [ -n "$DOCKER_USERNAME" ]; then
+            docker tag janus-core:latest "$DOCKER_USERNAME/janus-core:latest"
+            docker tag janus-core:latest "$DOCKER_USERNAME/janus-core:$SHORT_SHA"
+            docker push "$DOCKER_USERNAME/janus-core:latest"
+            docker push "$DOCKER_USERNAME/janus-core:$SHORT_SHA"
+          else
+            echo "Skipping Docker push (DOCKER_USERNAME not set)"
+          fi
