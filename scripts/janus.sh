@@ -13,11 +13,12 @@ set -euo pipefail
 
 # source utils.sh
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
 source "$DIR/utils.sh"
 
+
 # auth
-"$DIR/auth.sh"
-if [ $? -ne 0 ]; then
+if ! "$DIR/auth.sh"; then
   log ERROR "Authentication failed or cancelled. Exiting."
   log "DEBUG" "Session log available at: $JANUS_LOG_FILE"
   exit 1
