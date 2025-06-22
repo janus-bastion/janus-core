@@ -5,7 +5,7 @@ auth.sh - TUI / headless login using dialog
 
 - prompts for username/password using dialog
 - verifies clear-text password against the bcrypt hash stored in the
-  'users' table of janus_db
+  users table of janus_db
 - generates a UUID v4 session token in ./.janus_session + prints to stdout
   (so other scripts such as janus.sh can pick it up)
 - stub mode: set AUTH_STUB=1 to bypass database verification (for CI)
@@ -16,6 +16,7 @@ auth.sh - TUI / headless login using dialog
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
 source "$DIR/utils.sh"
 load_config
 
