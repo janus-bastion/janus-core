@@ -52,8 +52,8 @@ else
 
   dialog --backtitle "${DIALOG_BACKTITLE}" \
        --title 'Login required' \
-       --mixedform 'Please enter your Janus credentials:' 12 50 0 \
-       'Username:'  1 1 '' 1 15 30 0 0 \
+         --mixedform 'Please enter your Janus credentials:' 12 50 0 \
+         'Username:'  1 1 '' 1 15 30 0 0 \
        'Password:'  2 1 '' 2 15 30 0 1 2> "${tmpfile}"
 
   USER_LOGIN=$(sed -n 1p "${tmpfile}")
@@ -66,7 +66,7 @@ if [[ "${AUTH_STUB:-0}" == "1" ]]; then
   AUTH_OK=1
 else
   HASH_IN_DB=$(mysql -h "${DB_HOST}" -P "${DB_PORT}" -u "${DB_USER}" \
-               --password="${DB_PASS}" --silent --skip-column-names \
+          --password="${DB_PASS}" --silent --skip-column-names \
                -e "SELECT password FROM users WHERE username='${USER_LOGIN}'" "${DB_NAME}" | tr -d '\r\n')
 
   if [[ -n "${HASH_IN_DB}" ]]; then
@@ -81,11 +81,15 @@ if [[ "${AUTH_OK}" == "1" ]]; then
   TOKEN=$(gen_token)
   echo "${TOKEN}" > "${SESSION_FILE}"
   chmod 600 "${SESSION_FILE}"
+
+  echo "${USER_LOGIN}" > /tmp/janus_user
+  chmod 600 /tmp/janus_user
+  export JANUS_USER="${USER_LOGIN}"
+
   if [[ "${DIALOG:-}" != "cmdline" ]]; then
     log "INFO" "Session ID / Token: ${TOKEN}"
     dialog --msgbox "Authentication successful!\nSession: ${TOKEN}" 8 50
   fi
-  #echo "${TOKEN}"
   exit 0
 else
   if [[ "${DIALOG:-}" != "cmdline" ]]; then
