@@ -35,7 +35,7 @@ RUN chmod 600 /home/janus/.ssh/authorized_keys \
 
 RUN echo 'ForceCommand /opt/janus/scripts/janus.sh' >> /etc/ssh/sshd_config
 
-EXPOSE 2222
+EXPOSE 22
 CMD ["/usr/sbin/sshd","-D","-e"]
 
 
