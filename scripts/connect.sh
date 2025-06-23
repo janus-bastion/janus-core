@@ -18,7 +18,8 @@ source "$DIR/utils.sh"
 load_config                       # DB_HOST, DB_USER, …
 
 if [[ -z "${JANUS_USER:-}" && -f /tmp/janus_user ]]; then
-  export JANUS_USER=$(< /tmp/janus_user)
+  JANUS_USER=$(< /tmp/janus_user)
+  export JANUS_USER
 fi
 
 if [[ -z "${JANUS_USER:-}" ]]; then
