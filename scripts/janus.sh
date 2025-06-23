@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1091
 
 : '
 janus.sh - main script
@@ -12,21 +13,25 @@ janus.sh - main script
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck disable=SC1091
-source "$DIR/utils.sh"
+source "$DIR/utils.sh"          # provides log() + load_config
+load_config                      # in case global settings are needed here
 
-
-# auth
-if ! "$DIR/auth.sh"; then
-  log "ERROR" "Authentication failed or cancelled. Exiting."
-  log "DEBUG" "Session log available at: $JANUS_LOG_FILE"
-  exit 1
+if [[ "${JANUS_STUB:-0}" != "1" ]]; then
+  if ! "$DIR/auth.sh"; then
+    log ERROR "Authentication failed or was cancelled – exiting."
+    exit 1
+  fi
+  log INFO "Authentication successful."
+else
+  # Stub mode: export a dummy user so connect.sh works
+  export JANUS_USER="${JANUS_USER:-stubuser}"
+  echo "$JANUS_USER" > /tmp/janus_user
+  log INFO "Stub mode enabled (JANUS_STUB=1); skipping real authentication."
 fi
-log "INFO" "Authentication successful. Launching main menu."
 
-# Step 2: Main TUI menu
 while true; do
-  CHOICE=$(dialog --backtitle "Janus Bastion" --title "Main Menu" \
+  CHOICE=$(dialog --clear --backtitle "Janus Bastion" \
+          --title "Main Menu" \
           --menu "Select an action:" 15 50 5 \
           "1" "Connect to a machine" \
           "2" "View logs" \
@@ -34,37 +39,44 @@ while true; do
           3>&1 1>&2 2>&3)
 
   EXIT_STATUS=$?
-  if [ $EXIT_STATUS -ne 0 ]; then
-    log WARN "User exited menu with ESC or Cancel"
-    echo "DEBUG Session log available at: $JANUS_LOG_FILE"
+  if [[ $EXIT_STATUS -ne 0 ]]; then
+    log INFO "User aborted the main menu (ESC/Cancel)."
     break
   fi
 
   case "$CHOICE" in
     "1")
-      log INFO "User selected: Connect to a machine"
-      HOST_SELECTED=$("$DIR/connect.sh")
+      log INFO "Menu: Connect to a machine selected."
+      HOST_SELECTED=$("$DIR/connect.sh")   # or ./connect2.sh if that’s the filename
       if [[ $? -eq 0 && -n "$HOST_SELECTED" ]]; then
-        dialog --msgbox "Hôte sélectionné : ${HOST_SELECTED}" 6 60
-        log INFO "User chose host: ${HOST_SELECTED}"
-        # Issue #7 lancera réellement la connexion SSH ici.
+        dialog --backtitle "Janus Bastion" \
+               --msgbox "Host selected: ${HOST_SELECTED}" 6 50
+        log INFO "User picked host: ${HOST_SELECTED}"
+        # ISSUE #7 will actually perform the SSH connection here.
       else
-        log INFO "connect.sh cancelled or returned empty hostname"
+        log INFO "connect.sh was cancelled or returned no host."
       fi
       ;;
     "2")
-      dialog --clear --textbox "$JANUS_LOG_FILE" 22 80
-      log INFO "User viewed logs"
+      # If utils.sh defined JANUS_LOG_FILE, display it; fallback to /var/log/janus.log
+      LOG_FILE="${JANUS_LOG_FILE:-/var/log/janus.log}"
+      if [[ -f "$LOG_FILE" ]]; then
+        dialog --backtitle "Janus Bastion" \
+               --title "Session log" \
+               --textbox "$LOG_FILE" 22 80
+      else
+        dialog --backtitle "Janus Bastion" \
+               --msgbox "Log file not found: $LOG_FILE" 6 60
+      fi
       ;;
     "3")
-      log INFO "User selected: Quit"
+      log INFO "Menu: Quit selected – exiting."
       break
       ;;
     *)
-      log WARN "Invalid menu choice: $CHOICE"
+      log WARN "Unexpected menu choice: $CHOICE"
       ;;
   esac
 done
 
 log INFO "Janus Bastion session ended."
-echo "Session log available at: $JANUS_LOG_FILE"

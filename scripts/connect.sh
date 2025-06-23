@@ -2,7 +2,7 @@
 # shellcheck disable=SC1091
 
 : '
-connect.sh - TUI list of Linux hosts accessible to the authenticated user
+connect.sh – TUI that lists Linux hosts accessible to the authenticated user
 
 - reads the username saved by auth.sh in /tmp/janus_user
 - loads DB connection parameters via utils.sh / bastion.conf
@@ -14,12 +14,11 @@ connect.sh - TUI list of Linux hosts accessible to the authenticated user
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Load helper functions and DB parameters
 source "$DIR/utils.sh"
-load_config                       # sets DB_HOST / DB_… variables
+load_config   # sets DB_HOST, DB_PORT, DB_USER, DB_PASS, DB_NAME
 
-# ---------------------------------------------------------------------------
-# Retrieve authenticated user
-# ---------------------------------------------------------------------------
+
 if [[ -z "${JANUS_USER:-}" && -f /tmp/janus_user ]]; then
   JANUS_USER=$(< /tmp/janus_user)
   export JANUS_USER
@@ -27,23 +26,19 @@ fi
 
 if [[ -z "${JANUS_USER:-}" ]]; then
   dialog --backtitle "Janus Bastion" \
-         --msgbox "Utilisateur non authentifié.\nVeuillez exécuter auth.sh avant." 7 60
+         --msgbox "User not authenticated.\nRun auth.sh first." 7 60
   exit 1
 fi
 
-# ---------------------------------------------------------------------------
-# Query MySQL for accessible hosts
-# ---------------------------------------------------------------------------
+
 SQL_QUERY="
 SELECT DISTINCT
        h.hostname,
-       CONCAT(INET6_NTOA(h.ip_addr),
-              IF(h.description IS NOT NULL AND h.description <> '',
-                 CONCAT(' - ', h.description), ''))
-FROM hosts AS h
-JOIN services      AS s  ON s.host_id   = h.id
-JOIN access_rules  AS ar ON ar.service_id = s.id
-JOIN users         AS u  ON u.id        = ar.user_id
+       CONCAT_WS(' - ', INET_NTOA(h.ip_addr), h.description) AS info
+FROM hosts         h
+JOIN services      s  ON s.host_id   = h.id
+JOIN access_rules  ar ON ar.service_id = s.id
+JOIN users         u  ON u.id        = ar.user_id
 WHERE u.username = '${JANUS_USER}'
   AND ar.allow   = 1;
 "
@@ -56,31 +51,30 @@ mapfile -t rows < <(
 
 if [[ ${#rows[@]} -eq 0 ]]; then
   dialog --backtitle "Janus Bastion" \
-         --msgbox "Aucune machine accessible pour l’utilisateur '${JANUS_USER}'." 6 60
+         --msgbox "No machines available for user '${JANUS_USER}'." 6 60
   exit 1
 fi
 
-# ---------------------------------------------------------------------------
-# Build dialog --menu
-# ---------------------------------------------------------------------------
+
 declare -a menu_items
 for line in "${rows[@]}"; do
   IFS=$'\t' read -r host info <<< "$line"
   menu_items+=("$host" "$info")
 done
 
-tmpfile=$(mktemp)
-trap 'rm -f "$tmpfile"' EXIT
 
-# --- Correction SC2181 : on teste la réussite de dialog directement ----
-if dialog --clear --backtitle "Janus Bastion" \
-          --title "Sélectionnez une machine" \
-          --menu "Machines accessibles pour '${JANUS_USER}':" 15 70 \
-          ${#menu_items[@]} "${menu_items[@]}" 2> "$tmpfile"; then
-  CHOSEN_HOST=$(<"$tmpfile")
+exec 3>&1  # save current stdout (terminal)
+CHOSEN_HOST=$(dialog --clear --backtitle "Janus Bastion" \
+                     --title "Select a machine" \
+                     --menu "Machines accessible for '${JANUS_USER}':" 15 70 \
+                     ${#menu_items[@]} "${menu_items[@]}" \
+                     2>&1 1>&3)
+DIALOG_STATUS=$?
+exec 3>&-   # close the saved descriptor
+
+if [[ $DIALOG_STATUS -eq 0 && -n "$CHOSEN_HOST" ]]; then
   echo "$CHOSEN_HOST"
   exit 0
 else
-  # user pressed Cancel / ESC
-  exit 1
+  exit 1  # user pressed Cancel / ESC
 fi
