@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1091
 
 : '
 connect.sh - TUI list of Linux hosts accessible to the authenticated user
@@ -13,15 +14,15 @@ connect.sh - TUI list of Linux hosts accessible to the authenticated user
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck disable=SC1091
 source "$DIR/utils.sh"
-load_config                       # sets DB_HOST / DB_PORT / DB_USER / DB_PASS / DB_NAME
+load_config                       # sets DB_HOST / DB_… variables
 
-if [[ -z "${JANUS_USER:-}" ]]; then
-  if [[ -f /tmp/janus_user ]]; then
-    JANUS_USER=$(< /tmp/janus_user)
-    export JANUS_USER
-  fi
+# ---------------------------------------------------------------------------
+# Retrieve authenticated user
+# ---------------------------------------------------------------------------
+if [[ -z "${JANUS_USER:-}" && -f /tmp/janus_user ]]; then
+  JANUS_USER=$(< /tmp/janus_user)
+  export JANUS_USER
 fi
 
 if [[ -z "${JANUS_USER:-}" ]]; then
@@ -30,6 +31,9 @@ if [[ -z "${JANUS_USER:-}" ]]; then
   exit 1
 fi
 
+# ---------------------------------------------------------------------------
+# Query MySQL for accessible hosts
+# ---------------------------------------------------------------------------
 SQL_QUERY="
 SELECT DISTINCT
        h.hostname,
@@ -52,10 +56,13 @@ mapfile -t rows < <(
 
 if [[ ${#rows[@]} -eq 0 ]]; then
   dialog --backtitle "Janus Bastion" \
-         --msgbox "Aucune machine accessible pour l'utilisateur '${JANUS_USER}'." 6 60
+         --msgbox "Aucune machine accessible pour l’utilisateur '${JANUS_USER}'." 6 60
   exit 1
 fi
 
+# ---------------------------------------------------------------------------
+# Build dialog --menu
+# ---------------------------------------------------------------------------
 declare -a menu_items
 for line in "${rows[@]}"; do
   IFS=$'\t' read -r host info <<< "$line"
@@ -65,12 +72,11 @@ done
 tmpfile=$(mktemp)
 trap 'rm -f "$tmpfile"' EXIT
 
-dialog --clear --backtitle "Janus Bastion" \
-       --title "Sélectionnez une machine" \
-       --menu "Machines accessibles pour '${JANUS_USER}':" 15 70 \
-       ${#menu_items[@]} "${menu_items[@]}" 2> "$tmpfile"
-
-if [[ $? -eq 0 ]]; then
+# --- Correction SC2181 : on teste la réussite de dialog directement ----
+if dialog --clear --backtitle "Janus Bastion" \
+          --title "Sélectionnez une machine" \
+          --menu "Machines accessibles pour '${JANUS_USER}':" 15 70 \
+          ${#menu_items[@]} "${menu_items[@]}" 2> "$tmpfile"; then
   CHOSEN_HOST=$(<"$tmpfile")
   echo "$CHOSEN_HOST"
   exit 0
