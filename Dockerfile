@@ -1,6 +1,6 @@
 FROM debian:12
 
-LABEL maintainer="xeylou.pro@gmail.com"
+LABEL maintainer="Janus Team <imtjanus@gmail.com>"
 LABEL project="janus-core"
 
 ENV DEBIAN_FRONTEND=noninteractive
