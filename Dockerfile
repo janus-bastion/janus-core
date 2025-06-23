@@ -16,15 +16,13 @@ RUN apt-get update && apt-get install -y \
     mariadb-client \
     php-cli \
     openssh-server \
-    netcat-openbsd \
-    iputils-ping \
-    uuid-runtime \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir /var/run/sshd \
  && echo 'PermitRootLogin no'        >> /etc/ssh/sshd_config \
  && echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config \
+ && echo 'ForceCommand /opt/janus/scripts/janus.sh' >> /etc/ssh/sshd_config \
  && adduser --disabled-password --gecos '' janus \
  && mkdir -p /home/janus/.ssh \
  && chown -R janus:janus /home/janus/.ssh
@@ -33,16 +31,13 @@ COPY authorized_keys /home/janus/.ssh/authorized_keys
 RUN chmod 600 /home/janus/.ssh/authorized_keys \
  && chown -R janus:janus /home/janus/.ssh
 
-RUN echo 'ForceCommand /opt/janus/scripts/janus.sh' >> /etc/ssh/sshd_config
-
 EXPOSE 22
-CMD ["/usr/sbin/sshd","-D","-e"]
-
 
 WORKDIR /opt/janus
 COPY scripts/ ./scripts/
 COPY config/ ./config/
-
 RUN chmod +x scripts/*.sh
 
-CMD ["./scripts/janus.sh"]
+# CMD ["./scripts/janus.sh"]
+
+CMD service ssh start && exec ./scripts/janus.sh
