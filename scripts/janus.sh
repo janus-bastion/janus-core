@@ -4,12 +4,12 @@
 : '
 janus.sh – main entry point for the Janus bastion TUI
 
-• Launches auth.sh (unless JANUS_STUB=1).
-• Displays a dialog menu:
-    1. Connect to a machine   →  connect.sh  →  jump_connect.sh
-    2. View logs              →  tail or view JANUS_LOG_FILE
+• Launches auth.sh (unless JANUS_STUB=1)
+• Main menu:
+    1. Connect to a machine   → connect.sh → jump_connect.sh
+    2. View logs
     3. Quit
-• Uses utils.sh for logging and configuration
+• Uses utils.sh for logging and config
 '
 
 set -euo pipefail
@@ -18,9 +18,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$DIR/utils.sh"
 load_config
 
-# ────────────────────────────────────────────────────────────────────────────
-# 1. Authentication (skippable via JANUS_STUB)
-# ────────────────────────────────────────────────────────────────────────────
+# ─────────────────── 1. Authentication ───────────────────
 if [[ "${JANUS_STUB:-0}" != "1" ]]; then
   if ! "$DIR/auth.sh"; then
     log ERROR "Authentication failed or cancelled."
@@ -30,31 +28,32 @@ if [[ "${JANUS_STUB:-0}" != "1" ]]; then
 else
   export JANUS_USER="${JANUS_USER:-stubuser}"
   echo "$JANUS_USER" > /tmp/janus_user
-  log INFO "Stub mode: skipping authentication, user=${JANUS_USER}"
+  log INFO "Stub mode enabled; user=${JANUS_USER}"
 fi
 
-# ────────────────────────────────────────────────────────────────────────────
-# 2. Main menu loop
-# ────────────────────────────────────────────────────────────────────────────
+# ─────────────────── 2. Menu loop ─────────────────────────
 while true; do
-  CHOICE=$(dialog --clear --backtitle "Janus Bastion" \
-          --title "Main Menu" \
-          --menu "Select an action:" 15 55 5 \
-          "1" "Connect to a machine" \
-          "2" "View logs" \
-          "3" "Quit" \
-          3>&1 1>&2 2>&3)
-  [[ $? -ne 0 ]] && break   # ESC/Cancel exits
+  if ! CHOICE=$(dialog --clear --backtitle "Janus Bastion" \
+                --title "Main Menu" \
+                --menu "Select an action:" 15 55 5 \
+                "1" "Connect to a machine" \
+                "2" "View logs" \
+                "3" "Quit" \
+                --stdout); then
+    # ESC or Cancel → exit menu loop
+    break
+  fi
 
   case "$CHOICE" in
     1)
       log INFO "Menu → Connect to a machine"
-      HOST_SELECTED=$("$DIR/connect.sh")
-      if [[ $? -eq 0 && -n "$HOST_SELECTED" ]]; then
-        log INFO "Host chosen: $HOST_SELECTED"
-        "$DIR/jump_connect.sh" "$HOST_SELECTED"
+      if HOST_SELECTED=$("$DIR/connect.sh"); then
+        [[ -n "$HOST_SELECTED" ]] && {
+          log INFO "Host chosen: $HOST_SELECTED"
+          "$DIR/jump_connect.sh" "$HOST_SELECTED"
+        }
       else
-        log INFO "connect.sh cancelled or returned nothing"
+        log INFO "connect.sh cancelled or failed"
       fi
       ;;
     2)
@@ -66,8 +65,8 @@ while true; do
         dialog --msgbox "Log file not found: $LOG_FILE" 6 60
       fi
       ;;
-    3)  break ;;
-    *)  log WARN "Unexpected menu choice: $CHOICE" ;;
+    3) break ;;
+    *) log WARN "Unexpected menu choice: $CHOICE" ;;
   esac
 done
 
