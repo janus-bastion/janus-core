@@ -2,26 +2,23 @@
 # shellcheck disable=SC1091
 
 : '
-connect.sh – TUI that lists Linux hosts accessible to the authenticated user
+connect.sh - TUI that lists Linux hosts accessible to the authenticated user.
 
-- reads the username saved by auth.sh in /tmp/janus_user
-- loads DB connection parameters via utils.sh / bastion.conf
-- queries janus_db to obtain (hostname, ip, description) of allowed hosts
-- shows the list in a dialog --menu
-- prints the chosen hostname to stdout (no SSH yet – handled in issue #7)
+• Reads the username stored by auth.sh in /tmp/janus_user
+• Loads DB connection parameters via utils.sh / bastion.conf
+• Queries janus_db for (hostname, ip, description) of allowed hosts
+• Shows the list in a dialog --menu
+• Prints the chosen hostname to stdout; exits 0 on OK, 1 on Cancel
 '
 
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Load helper functions and DB parameters
 source "$DIR/utils.sh"
-load_config   # sets DB_HOST, DB_PORT, DB_USER, DB_PASS, DB_NAME
-
+load_config                       # DB_HOST, DB_USER, …
 
 if [[ -z "${JANUS_USER:-}" && -f /tmp/janus_user ]]; then
-  JANUS_USER=$(< /tmp/janus_user)
-  export JANUS_USER
+  export JANUS_USER=$(< /tmp/janus_user)
 fi
 
 if [[ -z "${JANUS_USER:-}" ]]; then
@@ -29,7 +26,6 @@ if [[ -z "${JANUS_USER:-}" ]]; then
          --msgbox "User not authenticated.\nRun auth.sh first." 7 60
   exit 1
 fi
-
 
 SQL_QUERY="
 SELECT DISTINCT
@@ -55,26 +51,22 @@ if [[ ${#rows[@]} -eq 0 ]]; then
   exit 1
 fi
 
-
 declare -a menu_items
 for line in "${rows[@]}"; do
   IFS=$'\t' read -r host info <<< "$line"
   menu_items+=("$host" "$info")
 done
 
-
-exec 3>&1  # save current stdout (terminal)
 CHOSEN_HOST=$(dialog --clear --backtitle "Janus Bastion" \
                      --title "Select a machine" \
                      --menu "Machines accessible for '${JANUS_USER}':" 15 70 \
                      ${#menu_items[@]} "${menu_items[@]}" \
-                     2>&1 1>&3)
-DIALOG_STATUS=$?
-exec 3>&-   # close the saved descriptor
+                     --stdout)        # <-- result goes to stdout only
+DIALOG_STATUS=$?                     # 0 = OK, 1 = Cancel/ESC
 
 if [[ $DIALOG_STATUS -eq 0 && -n "$CHOSEN_HOST" ]]; then
   echo "$CHOSEN_HOST"
   exit 0
 else
-  exit 1  # user pressed Cancel / ESC
+  exit 1
 fi
