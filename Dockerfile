@@ -1,6 +1,6 @@
 FROM debian:12
 
-LABEL maintainer="contact@error.systems"
+LABEL maintainer="xeylou.pro@gmail.com"
 LABEL project="janus-core"
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -15,8 +15,29 @@ RUN apt-get update && apt-get install -y \
     uuid-runtime \
     mariadb-client \
     php-cli \
+    openssh-server \
+    netcat-openbsd \
+    iputils-ping \
+    uuid-runtime \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir /var/run/sshd \
+ && echo 'PermitRootLogin no'        >> /etc/ssh/sshd_config \
+ && echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config \
+ && adduser --disabled-password --gecos '' janus \
+ && mkdir -p /home/janus/.ssh \
+ && chown -R janus:janus /home/janus/.ssh
+
+COPY authorized_keys /home/janus/.ssh/authorized_keys
+RUN chmod 600 /home/janus/.ssh/authorized_keys \
+ && chown -R janus:janus /home/janus/.ssh
+
+RUN echo 'ForceCommand /opt/janus/scripts/janus.sh' >> /etc/ssh/sshd_config
+
+EXPOSE 2222
+CMD ["/usr/sbin/sshd","-D","-e"]
+
 
 WORKDIR /opt/janus
 COPY scripts/ ./scripts/
