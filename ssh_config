@@ -1,0 +1,16 @@
+# ───── Bastion-side per-host SSH options ───────────────────────
+Host host_210
+    HostName 192.168.79.196
+    User      janusadmin
+    IdentityFile /opt/janus/keys/host_210/id_rsa
+    IdentitiesOnly yes
+    StrictHostKeyChecking accept-new   # first connect stores the hostkey
+    LogLevel ERROR
+
+# Fallback match by IP – optional but handy
+Host 192.168.79.196
+    User      janusadmin
+    IdentityFile /opt/janus/keys/host_210/id_rsa
+    IdentitiesOnly yes
+    StrictHostKeyChecking accept-new
+    LogLevel ERROR
