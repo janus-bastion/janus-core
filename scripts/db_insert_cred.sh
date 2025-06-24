@@ -6,10 +6,9 @@ source "$DIR/utils.sh"
 load_config
 
 HOSTNAME="host_210"
-HOST_IP="172.16.0.210"
+HOST_IP="192.168.79.196"   # ← NEW IP
 SSH_PORT=22
 
-# Active Janus login (env → /tmp/janus_user → fallback)
 if [[ -z "${JANUS_USER:-}" && -f /tmp/janus_user ]]; then
   JANUS_USER=$(< /tmp/janus_user)
 fi
@@ -17,14 +16,13 @@ JANUS_USER="${JANUS_USER:-janusadmin}"
 
 KEY_PATH="/opt/janus/keys/host_210/id_rsa"
 [[ -f "$KEY_PATH" ]] || { echo "Missing key $KEY_PATH" >&2; exit 1; }
-
-# Single-line Base-64 (POSIX portable: fold -w0 = no wrap)
 BASE64_KEY=$(base64 < "$KEY_PATH" | tr -d '\n')
 
 mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" --password="$DB_PASS" "$DB_NAME" <<SQL
 START TRANSACTION;
-INSERT IGNORE INTO hosts (hostname, ip_addr, description)
-VALUES ('${HOSTNAME}', INET_ATON('${HOST_IP}'), 'Local VM 210');
+INSERT INTO hosts (hostname, ip_addr, description)
+VALUES ('${HOSTNAME}', INET_ATON('${HOST_IP}'), 'Local VM 210')
+ON DUPLICATE KEY UPDATE ip_addr = VALUES(ip_addr);
 
 INSERT IGNORE INTO services (host_id, proto, port)
 VALUES ( (SELECT id FROM hosts WHERE hostname='${HOSTNAME}'), 'SSH', ${SSH_PORT});
