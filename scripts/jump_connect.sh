@@ -8,9 +8,8 @@ load_config
 
 [[ $# -eq 1 ]] || { echo "Usage: $0 <hostname>" >&2; exit 1; }
 HOSTNAME="$1"
-JANUS_USER=$(cat /tmp/janus_user)        # should be janusadmin
+JANUS_USER=$(cat /tmp/janus_user)      # should be janusadmin
 
-# helper
 q() { mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" --password="$DB_PASS" \
             --silent --skip-column-names "$DB_NAME" -e "$1"; }
 
@@ -21,18 +20,19 @@ USER_ID=$(q "SELECT id FROM users WHERE username='${JANUS_USER}'")
 B64_KEY=$(q "SELECT TO_BASE64(secret_enc) FROM credentials
              WHERE user_id=${USER_ID} AND service_id=${SERVICE_ID}
                AND cred_type='SSH_KEY' LIMIT 1")
+
 [[ -n "$B64_KEY" ]] || { echo "No SSH key found for ${HOSTNAME}" >&2; exit 1; }
 
 KEY_FILE=$(mktemp)
 trap 'rm -f "$KEY_FILE"' EXIT
-echo "$B64_KEY" | base64 -d > "$KEY_FILE"
+# Use printf to avoid newline; exit on decode error
+if ! printf '%s' "$B64_KEY" | base64 -d > "$KEY_FILE" 2>/dev/null; then
+  echo "Credential blob corrupt for ${HOSTNAME}" >&2
+  exit 1
+fi
 chmod 600 "$KEY_FILE"
 
-# Same login on bastion and target VM
 REMOTE_USER="$JANUS_USER"
-
 echo "Connecting to ${REMOTE_USER}@${HOST_IP} via bastion ..."
-ssh -J "${JANUS_USER}@127.0.0.1" \
-    -i "$KEY_FILE" \
-    -o LogLevel=ERROR \
-    "${REMOTE_USER}@${HOST_IP}"
+ssh -J "${JANUS_USER}@127.0.0.1" -i "$KEY_FILE" \
+    -o LogLevel=ERROR "${REMOTE_USER}@${HOST_IP}"
