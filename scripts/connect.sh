@@ -2,7 +2,7 @@
 # shellcheck disable=SC1091
 
 : '
-connect.sh - TUI that lists Linux hosts accessible to the authenticated user.
+connect.sh – TUI that lists Linux hosts accessible to the authenticated user
 
 • Reads the username stored by auth.sh in /tmp/janus_user
 • Loads DB connection parameters via utils.sh / bastion.conf
@@ -15,8 +15,9 @@ set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$DIR/utils.sh"
-load_config                       # DB_HOST, DB_USER, …
+load_config                       # DB_HOST, DB_USER, DB_PASS, DB_NAME
 
+# ── Determine logged-in Janus user ─────────────────────────────
 if [[ -z "${JANUS_USER:-}" && -f /tmp/janus_user ]]; then
   JANUS_USER=$(< /tmp/janus_user)
   export JANUS_USER
@@ -28,6 +29,7 @@ if [[ -z "${JANUS_USER:-}" ]]; then
   exit 1
 fi
 
+# ── Query MySQL for accessible hosts ───────────────────────────
 SQL_QUERY="
 SELECT DISTINCT
        h.hostname,
@@ -52,20 +54,22 @@ if [[ ${#rows[@]} -eq 0 ]]; then
   exit 1
 fi
 
+# ── Build dialog menu ──────────────────────────────────────────
 declare -a menu_items
 for line in "${rows[@]}"; do
   IFS=$'\t' read -r host info <<< "$line"
   menu_items+=("$host" "$info")
 done
 
+# ── Show menu and capture selection ────────────────────────────
 CHOSEN_HOST=$(dialog --clear --backtitle "Janus Bastion" \
                      --title "Select a machine" \
                      --menu "Machines accessible for '${JANUS_USER}':" 15 70 \
                      ${#menu_items[@]} "${menu_items[@]}" \
-                     --stdout)        # <-- result goes to stdout only
-DIALOG_STATUS=$?                     # 0 = OK, 1 = Cancel/ESC
+                     --stdout)
+EXIT_CODE=$?   # 0 = OK, 1 = Cancel/ESC
 
-if [[ $DIALOG_STATUS -eq 0 && -n "$CHOSEN_HOST" ]]; then
+if [[ $EXIT_CODE -eq 0 && -n "$CHOSEN_HOST" ]]; then
   echo "$CHOSEN_HOST"
   exit 0
 else
