@@ -2,13 +2,19 @@
 # Usage: jump_connect.sh <hostname>
 set -euo pipefail
 
+# ── Static host data (adapt if the IP changes again) ─────────────
 HOSTNAME="$1"
-HOST_IP="192.168.79.196"         # updated VM IP
+HOST_IP="192.168.79.196"
 REMOTE_USER="janusadmin"
-KEY_FILE="/opt/janus/keys/host_210/id_rsa"
+SOURCE_KEY="/opt/janus/keys/host_210/id_rsa"   # read-only volume
 
-[[ -f "$KEY_FILE" ]] || { echo "SSH key $KEY_FILE not found" >&2; exit 1; }
-chmod 600 "$KEY_FILE" 2>/dev/null || true   # ignore if read-only mount
+[[ -f "$SOURCE_KEY" ]] || { echo "Key $SOURCE_KEY not found" >&2; exit 1; }
+
+# ── Copy to a temp file with strict perms ────────────────────────
+KEY_FILE=$(mktemp)
+trap 'rm -f "$KEY_FILE"' EXIT
+cp "$SOURCE_KEY" "$KEY_FILE"
+chmod 600 "$KEY_FILE"
 
 echo "Connecting to ${REMOTE_USER}@${HOST_IP} ..."
 exec ssh -i "$KEY_FILE" \
