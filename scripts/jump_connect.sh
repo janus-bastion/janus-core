@@ -3,11 +3,16 @@
 set -euo pipefail
 
 HOSTNAME="$1"
-HOST_IP="192.168.79.196"          # fixed IP (update if it changes again)
-REMOTE_USER="janusadmin"          # same user on bastion and VM
-KEY_FILE="/opt/janus/keys/host_210/id_rsa"
+HOST_IP="192.168.79.196"         # fixed IP
+REMOTE_USER="janusadmin"         # same user on bastion and VM
+SOURCE_KEY="/opt/janus/keys/host_210/id_rsa"
 
-[[ -f "$KEY_FILE" ]] || { echo "SSH key $KEY_FILE not found" >&2; exit 1; }
+[[ -f "$SOURCE_KEY" ]] || { echo "Key $SOURCE_KEY not found" >&2; exit 1; }
+
+# copy to a writeable location and secure permissions
+KEY_FILE=$(mktemp)
+trap 'rm -f "$KEY_FILE"' EXIT
+cp "$SOURCE_KEY" "$KEY_FILE"
 chmod 600 "$KEY_FILE"
 
 echo "Connecting to ${REMOTE_USER}@${HOST_IP} via bastion ..."
