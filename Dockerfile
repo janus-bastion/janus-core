@@ -24,6 +24,10 @@ COPY authorized_keys /home/janusadmin/.ssh/authorized_keys
 RUN chmod 600 /home/janusadmin/.ssh/authorized_keys \
  && chown -R janusadmin:janusadmin /home/janusadmin/.ssh
 
+COPY ssh_config /home/janusadmin/.ssh/config
+RUN chmod 600 /home/janusadmin/.ssh/config \
+ && chown janusadmin:janusadmin /home/janusadmin/.ssh/config
+
 WORKDIR /opt/janus
 COPY scripts/ ./scripts/
 COPY config/ ./config/
