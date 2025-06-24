@@ -2,47 +2,45 @@
 # shellcheck disable=SC1091
 
 : '
-auth.sh – Janus bastion authentication helper
+auth.sh – original version
 
-• Prompts for user / password (or uses env vars in headless mode)
-• Verifies the bcrypt hash in janus_db.users
-• Stores the authenticated username in /tmp/janus_user
-  (world-unreadable, owned by the logged-in user)
+• Prompts for username / password with dialog
+• Verifies bcrypt hash in janus_db.users
+• Saves the login name in /tmp/janus_user (chmod 600)
 '
 
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$DIR/utils.sh"
-load_config
+load_config           # sets DB_HOST / DB_USER / ...
 
-# ── Prompt (stripped for brevity – keep your existing dialog / headless code) ──
-read -rp "Janus username: " USER_LOGIN
-read -rsp "Password: "      USER_PWD; echo
+BACKTITLE='Janus Bastion • Login'
 
-# ── Check hash in MySQL (unchanged) ───────────────────────────────────────────
+tmp=$(mktemp)
+trap 'rm -f "$tmp"' EXIT
+
+# ── Dialog prompt ──────────────────────────────────────────────
+dialog --backtitle "$BACKTITLE" \
+       --mixedform "Credentials" 10 50 0 \
+       "Username:" 1 1 ""  1 12 30 0 0 \
+       "Password:" 2 1 ""  2 12 30 0 1 2> "$tmp"
+
+USER_LOGIN=$(sed -n 1p "$tmp")
+USER_PWD=$(sed -n 2p "$tmp")
+
+# ── Check password hash ───────────────────────────────────────
 HASH=$(mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" --password="$DB_PASS" \
-            --silent --skip-column-names "$DB_NAME" \
-            -e "SELECT password FROM users WHERE username='${USER_LOGIN}'")
+             --silent --skip-column-names "$DB_NAME" \
+             -e "SELECT password FROM users WHERE username='${USER_LOGIN}'")
+
 php -r "exit(password_verify('${USER_PWD}', '${HASH}') ? 0 : 1);"
-AUTH_OK=$?
+[[ $? -eq 0 ]] || { dialog --msgbox "Invalid credentials" 6 30; exit 1; }
 
-if [[ $AUTH_OK -ne 0 ]]; then
-  echo "Invalid credentials."
-  exit 1
-fi
+# ── Write /tmp/janus_user ─────────────────────────────────────
+printf '%s\n' "$USER_LOGIN" > /tmp/janus_user
+chmod 600 /tmp/janus_user
+chown "$(id -u)":"$(id -g)" /tmp/janus_user
 
-# ── Safe write of /tmp/janus_user ─────────────────────────────────────────────
-TMP_FILE="/tmp/janus_user"
-
-# Remove if it exists and we cannot overwrite
-if [[ -e "$TMP_FILE" && ! -w "$TMP_FILE" ]]; then
-  rm -f "$TMP_FILE"
-fi
-
-printf '%s\n' "$USER_LOGIN" > "$TMP_FILE"
-chmod 600 "$TMP_FILE"
-chown "$(id -u)":"$(id -g)" "$TMP_FILE"
-
-echo "Authenticated as $USER_LOGIN"
+dialog --msgbox "Welcome ${USER_LOGIN}" 6 30
 exit 0
