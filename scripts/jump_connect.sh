@@ -3,20 +3,16 @@
 set -euo pipefail
 
 HOSTNAME="$1"
-HOST_IP="192.168.79.196"         # fixed IP
-REMOTE_USER="janusadmin"         # same user on bastion and VM
-SOURCE_KEY="/opt/janus/keys/host_210/id_rsa"
+HOST_IP="192.168.79.196"         # updated VM IP
+REMOTE_USER="janusadmin"
+KEY_FILE="/opt/janus/keys/host_210/id_rsa"
 
-[[ -f "$SOURCE_KEY" ]] || { echo "Key $SOURCE_KEY not found" >&2; exit 1; }
+[[ -f "$KEY_FILE" ]] || { echo "SSH key $KEY_FILE not found" >&2; exit 1; }
+chmod 600 "$KEY_FILE" 2>/dev/null || true   # ignore if read-only mount
 
-# copy to a writeable location and secure permissions
-KEY_FILE=$(mktemp)
-trap 'rm -f "$KEY_FILE"' EXIT
-cp "$SOURCE_KEY" "$KEY_FILE"
-chmod 600 "$KEY_FILE"
-
-echo "Connecting to ${REMOTE_USER}@${HOST_IP} via bastion ..."
-ssh -J "${REMOTE_USER}@127.0.0.1" \
-    -i "$KEY_FILE" \
-    -o LogLevel=ERROR \
-    "${REMOTE_USER}@${HOST_IP}"
+echo "Connecting to ${REMOTE_USER}@${HOST_IP} ..."
+exec ssh -i "$KEY_FILE" \
+         -o IdentitiesOnly=yes \
+         -o StrictHostKeyChecking=accept-new \
+         -o LogLevel=ERROR \
+         "${REMOTE_USER}@${HOST_IP}"
