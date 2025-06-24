@@ -1,44 +1,77 @@
 #!/usr/bin/env bash
-set -euo pipefail
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
+
+: '
+connect.sh – TUI that lists Linux hosts accessible to the authenticated user
+
+• Reads the username stored by auth.sh in /tmp/janus_user
+• Loads DB connection parameters via utils.sh / bastion.conf
+• Queries janus_db for (hostname, ip, description) of allowed hosts
+• Shows the list in a dialog --menu
+• Prints the chosen hostname to stdout; exits 0 on OK, 1 on Cancel
+'
+
+set -euo pipefail
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$DIR/utils.sh"
-load_config
+load_config                       # DB_HOST, DB_USER, DB_PASS, DB_NAME
 
-HOSTNAME="host_210"
-HOST_IP="172.16.0.210"
-SSH_PORT=22
-
-# Active Janus login (env → /tmp/janus_user → fallback)
+# ── Determine logged-in Janus user ─────────────────────────────
 if [[ -z "${JANUS_USER:-}" && -f /tmp/janus_user ]]; then
   JANUS_USER=$(< /tmp/janus_user)
+  export JANUS_USER
 fi
-JANUS_USER="${JANUS_USER:-janusadmin}"
 
-KEY_PATH="/opt/janus/keys/host_210/id_rsa"
-[[ -f "$KEY_PATH" ]] || { echo "Missing key $KEY_PATH" >&2; exit 1; }
+if [[ -z "${JANUS_USER:-}" ]]; then
+  dialog --backtitle "Janus Bastion" \
+         --msgbox "User not authenticated.\nRun auth.sh first." 7 60
+  exit 1
+fi
 
-# Single-line Base-64 (POSIX portable: fold -w0 = no wrap)
-BASE64_KEY=$(base64 < "$KEY_PATH" | tr -d '\n')
+# ── Query MySQL for accessible hosts ───────────────────────────
+SQL_QUERY="
+SELECT DISTINCT
+       h.hostname,
+       CONCAT_WS(' - ', INET_NTOA(h.ip_addr), h.description) AS info
+FROM hosts         h
+JOIN services      s  ON s.host_id   = h.id
+JOIN access_rules  ar ON ar.service_id = s.id
+JOIN users         u  ON u.id        = ar.user_id
+WHERE u.username = '${JANUS_USER}'
+  AND ar.allow   = 1;
+"
 
-mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" --password="$DB_PASS" "$DB_NAME" <<SQL
-START TRANSACTION;
-INSERT IGNORE INTO hosts (hostname, ip_addr, description)
-VALUES ('${HOSTNAME}', INET_ATON('${HOST_IP}'), 'Local VM 210');
+mapfile -t rows < <(
+  mysql -h "${DB_HOST}" -P "${DB_PORT}" -u "${DB_USER}" \
+        --password="${DB_PASS}" --silent --skip-column-names \
+        -e "$SQL_QUERY" "${DB_NAME}"
+)
 
-INSERT IGNORE INTO services (host_id, proto, port)
-VALUES ( (SELECT id FROM hosts WHERE hostname='${HOSTNAME}'), 'SSH', ${SSH_PORT});
+if [[ ${#rows[@]} -eq 0 ]]; then
+  dialog --backtitle "Janus Bastion" \
+         --msgbox "No machines available for user '${JANUS_USER}'." 6 60
+  exit 1
+fi
 
-REPLACE INTO credentials (user_id, service_id, cred_type, secret_enc, valid_from)
-VALUES (
-  (SELECT id FROM users WHERE username='${JANUS_USER}'),
-  (SELECT id FROM services WHERE host_id=(SELECT id FROM hosts WHERE hostname='${HOSTNAME}')
-         AND proto='SSH' AND port=${SSH_PORT}),
-  'SSH_KEY',
-  FROM_BASE64('${BASE64_KEY}'),
-  NOW()
-);
-COMMIT;
-SQL
+# ── Build dialog menu ──────────────────────────────────────────
+declare -a menu_items
+for line in "${rows[@]}"; do
+  IFS=$'\t' read -r host info <<< "$line"
+  menu_items+=("$host" "$info")
+done
 
-echo "Credential stored for ${JANUS_USER}@${HOSTNAME}."
+# ── Show menu and capture selection ────────────────────────────
+CHOSEN_HOST=$(dialog --clear --backtitle "Janus Bastion" \
+                     --title "Select a machine" \
+                     --menu "Machines accessible for '${JANUS_USER}':" 15 70 \
+                     ${#menu_items[@]} "${menu_items[@]}" \
+                     --stdout)
+EXIT_CODE=$?   # 0 = OK, 1 = Cancel/ESC
+
+if [[ $EXIT_CODE -eq 0 && -n "$CHOSEN_HOST" ]]; then
+  echo "$CHOSEN_HOST"
+  exit 0
+else
+  exit 1
+fi
